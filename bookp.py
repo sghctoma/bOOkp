@@ -12,7 +12,11 @@ import urllib.parse
 from argparse import ArgumentParser
 from pyvirtualdisplay import Display
 from selenium import webdriver
-
+from selenium.webdriver.common.action_chains import ActionChains
+from selenium.webdriver.common.by import By
+from selenium.webdriver.support.ui import WebDriverWait
+from selenium.webdriver.support import expected_conditions as EC
+from selenium.common.exceptions import TimeoutException
 
 user_agent = {'User-Agent': 'krumpli'}
 logger = logging.getLogger(__name__)
@@ -32,14 +36,27 @@ def create_session(email, password, browser_visible=False, proxy=None):
     browser.get('https://www.amazon.com')
 
     logger.info("Logging in")
-    browser.find_element_by_css_selector("#nav-signin-tooltip > a.nav-action-button").click()
+    hover = browser.find_element_by_css_selector('#nav-link-accountList > div')
+    ActionChains(browser).move_to_element(hover)
+    button = browser.find_element_by_css_selector('#nav-flyout-ya-signin > a')
+    browser.get(button.get_attribute('href'))
     browser.find_element_by_id("ap_email").clear()
     browser.find_element_by_id("ap_email").send_keys(email)
-
+    browser.find_element_by_css_selector("#continue").click()
+    browser.implicitly_wait(10)
     browser.find_element_by_id("ap_password").clear()
     browser.find_element_by_id("ap_password").send_keys(password)
     browser.find_element_by_id("signInSubmit").click()
-
+    try:
+        WebDriverWait(browser, 10).until(
+            EC.presence_of_element_located(
+                (By.XPATH, "//*[contains(text(),'For your security, approve the notification sent to')]")
+            )
+        )
+        logger.info('Triggered an SMS check, waiting here...')
+        input("Press Enter to continue...")
+    except TimeoutException:
+        pass
     logger.info("Getting CSRF token")
     browser.get('https://www.amazon.com/hz/mycd/myx#/home/content/booksAll')
 
