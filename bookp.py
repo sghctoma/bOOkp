@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 
 import getpass
+import time
 import json
 import logging
 import os
@@ -12,37 +13,52 @@ import urllib.parse
 from argparse import ArgumentParser
 from pyvirtualdisplay import Display
 from selenium import webdriver
+from selenium.webdriver.common.by import By
 
 
 user_agent = {'User-Agent': 'krumpli'}
 logger = logging.getLogger(__name__)
 
 def create_session(email, password, browser_visible=False, proxy=None):
+    display = None
     if not browser_visible:
-        display = Display(visible=0)
+        display = Display(visible=False)
         display.start()
 
     logger.info("Starting browser")
     options = webdriver.ChromeOptions()
     if proxy:
         options.add_argument('--proxy-server='+proxy)
-    browser = webdriver.Chrome(chrome_options=options)
+    browser = webdriver.Chrome(options=options)
 
     logger.info("Loading www.amazon.com")
     browser.get('https://www.amazon.com')
 
     logger.info("Logging in")
-    browser.find_element_by_css_selector("#nav-signin-tooltip > a.nav-action-button").click()
-    browser.find_element_by_id("ap_email").clear()
-    browser.find_element_by_id("ap_email").send_keys(email)
+    browser.find_element(By.CSS_SELECTOR, "#nav-signin-tooltip > a.nav-action-button").click()
+    time.sleep(2)
 
-    browser.find_element_by_id("ap_password").clear()
-    browser.find_element_by_id("ap_password").send_keys(password)
-    browser.find_element_by_id("signInSubmit").click()
+    browser.find_element(By.ID, "ap_email").clear()
+    browser.find_element(By.ID, "ap_email").send_keys(email)
+    browser.find_element(By.ID, "continue").click()
+    time.sleep(2)
+
+    browser.find_element(By.ID, "ap_password").clear()
+    browser.find_element(By.ID, "ap_password").send_keys(password)
+    browser.find_element(By.ID, "signInSubmit").click()
+    time.sleep(2)
+
+    if browser.find_elements(By.ID, "auth-mfa-otpcode"):
+        otp_key = input("OTP Key: ")
+        browser.find_element(By.ID, "auth-mfa-otpcode").clear()
+        browser.find_element(By.ID, "auth-mfa-otpcode").send_keys(otp_key)
+        browser.find_element(By.ID, "auth-signin-button").click()
+        time.sleep(2)
 
     logger.info("Getting CSRF token")
     browser.get('https://www.amazon.com/hz/mycd/myx#/home/content/booksAll')
 
+    csrf_token = None
     match = re.search('var csrfToken = "(.*)";', browser.page_source)
     if match:
         csrf_token = match.group(1)
@@ -52,7 +68,7 @@ def create_session(email, password, browser_visible=False, proxy=None):
         cookies[cookie['name']] = cookie['value']
 
     browser.quit()
-    if not browser_visible:
+    if display:
         display.stop();
 
     return cookies, csrf_token
@@ -193,8 +209,10 @@ def main():
     while True:
         try:
             choice = int(input("Device #: "))
-        except:
+        except Exception:
             logger.error("Not a number!")
+            continue
+
         if choice in range(len(devices)):
             break
 
@@ -207,6 +225,6 @@ def main():
 
 if __name__ == '__main__':
     try:
-    	sys.exit(main())
+        sys.exit(main())
     except KeyboardInterrupt:
         logger.info("Exiting...")
